@@ -55,6 +55,7 @@ def preprocess(img_dir, qst_dir, anno_dir, vocab_file):
         qst_tokens = tokenizer(test_qst['questions'][i]['question'])
         img_name = img_temp.format(test_qst['data_subtype'], img_id)
         img_path = os.path.join(img_dir, test_qst['data_subtype'], img_name)
+        
         dataset['test'].append({'qst_id': qst_id, 'qst_tokens':qst_tokens, 'img_path':img_path})
 
     dataset['train_val'] = dataset['train'] + dataset['val']
