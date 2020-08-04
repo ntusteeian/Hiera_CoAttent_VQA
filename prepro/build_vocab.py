@@ -53,7 +53,7 @@ def build_ans_vocab(input_dir, output_dir, num_ans):
 
     top_ans = sorted(answers, key=answers.get, reverse= True) # sort by numbers
     top_ans = ['<unk>'] + top_ans[:num_ans-1]
-    with open(output_dir + '/annotation_vocabs2.txt', 'w') as f :
+    with open(output_dir + '/annotation_vocabs.txt', 'w') as f :
         f.writelines([ans+'\n' for ans in top_ans])
 
     print(f'The number of total words of answers: {len(answers)}')
@@ -74,10 +74,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # data path
-    parser.add_argument('--input_qst_dir', default='/HDD-1_data/dataset/VQA-v2/Questions',
+    parser.add_argument('--input_qst_dir', default='/HDD-1_data/dataset/VQA_v2.0/Questions',
                         help='input question directory from VQA v2.0 dataset')
-    parser.add_argument('--input_ans_dir', default='/HDD-1_data/dataset/VQA-v2/Annotations',
-                        help='input question directory from VQA v2.0 dataset')
+    parser.add_argument('--input_ans_dir', default='/HDD-1_data/dataset/VQA_v2.0/Annotations',
+                        help='input annotations directory from VQA v2.0 dataset')
     parser.add_argument('--output_dir', default='../data',
                         help='the directory of saving the build vocab')
     # optional
