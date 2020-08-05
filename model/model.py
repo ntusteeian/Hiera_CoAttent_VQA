@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.utils.rnn as rnn
-
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from prepro.build_dataset import VQADataset
 
 class CoAttent(nn.Module):
 
@@ -17,35 +17,40 @@ class CoAttent(nn.Module):
         self.maxpool = nn.MaxPool2d((3, 1))
         self.tanh = nn.Tanh()
 
-    def forward(self, question):
+        self.lstm = nn.LSTM(input_size=embbed_size, hidden_size=embbed_size, batch_first=True)
 
-        word = self.embedding(question)                         # [batch_size, qst_len, embbed_dim=512]
-        word = self.tanh(word).permute(0, 2, 1)                 # [batch_size, embbed_dim=512, qst_len]
+    def forward(self, qst, qst_length):
 
-        unigram = self.unigram(word).unsqueeze(2)               # [batch_size, embbed_dim=512, qst_len]
+        word = self.embedding(qst)                              # [batch_size, qst_len, embbed_size=512]
+        word = self.tanh(word).permute(0, 2, 1)                 # [batch_size, embbed_size=512, qst_len]
+
+        unigram = self.unigram(word).unsqueeze(2)               # [batch_size, embbed_size=512, qst_len]
         bigram = self.bigram(word).narrow(2, 1, word.shape[-1]).unsqueeze(2)
         trigram = self.trigram(word).unsqueeze(2)
 
-        phrase = torch.cat((unigram, bigram, trigram), dim=2)   # [batch_size, embbed_dim=512, 3, qst_len]
-        phrase = self.tanh(self.maxpool(phrase).squeeze())      # [batch_size, embbed_dim=512, qst_len]
-        phrase = self.dropout(phrase)
-        print(phrase.size())
+        phrase = torch.cat((unigram, bigram, trigram), dim=2)   # [batch_size, embbed_size=512, 3, qst_len]
+        phrase = self.tanh(self.maxpool(phrase).squeeze())      # [batch_size, embbed_size=512, qst_len]
+        phrase = self.dropout(phrase).permute(0, 2, 1)          # [batch_size, qst_len, embbed_size=512]
+
+        qst_length = qst_length.tolist()
+        phrase_packed = pack_padded_sequence(phrase, qst_length, batch_first=True, enforce_sorted=False)
+        # phrase_packed: (batch_sum_seq_len X embedding_dim)
+        qst_packed, _ = self.lstm(phrase_packed)
+        qst_embedding, _ = pad_packed_sequence(qst_packed, batch_first=True)  # [batch_size, max_qst_len=9, embbed_dim=512]
+
         return phrase
+
+from torch.utils.data import DataLoader
 
 if __name__ == '__main__':
 
     torch.manual_seed(0)
+    vqa = VQADataset('../data', 'train.npy')
+    num_vocab = vqa.qst_vocab.vocab_size
+    train_loader = DataLoader(dataset=vqa,batch_size=5,shuffle=True,num_workers=8)
 
-    test_model = CoAttent(num_vocab=100)
-    input = torch.ones(10, 5).type(torch.LongTensor)  # batch x question_len
-    output = test_model(input)
 
+    test_model = CoAttent(num_vocab=num_vocab)
+    for idx, sample in enumerate(train_loader):
+        output = test_model(sample['question'], sample['length'])
 
-    # maxpool = nn.MaxPool2d((3,1))
-    # input = torch.rand(1, 2, 3, 8).unsqueeze(2) #batch channel height width
-    # print(input.shape)
-    # test = torch.unsqueeze(input, -1)
-    # print(test.shape)
-    # output = maxpool(input)
-    # print(output.shape)
-    # print(output)
