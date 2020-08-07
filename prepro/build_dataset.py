@@ -20,22 +20,23 @@ class VQADataset(Dataset):
 
     def __getitem__(self, idx):
 
-        # path = self.input_data[idx]['img_path']
-        # img = np.array(Image.open(path).convert('RGB'))
+        path = self.input_data[idx]['img_path']
+        img = Image.open(path).convert('RGB')
         qst_id = self.input_data[idx]['qst_id']
         qst_tokens = self.input_data[idx]['qst_tokens']
         qst2idx = np.array([self.qst_vocab.word2idx('<pad>')] * self.max_qst_len)
         qst2idx[:len(qst_tokens)] = [self.qst_vocab.word2idx(token) for token in qst_tokens]
         # sample = {'image': img, 'question': qst2idx, 'question_id': qst_id}
         sample = {'question': qst2idx, 'question_id': qst_id, 'length': len(qst_tokens)}
+        sample = {'image': img, 'question': qst2idx, 'question_id': qst_id, 'length': len(qst_tokens)}
 
         if self.labeled:
             ans2idx = [self.ans_vocab.word2idx(ans) for ans in self.input_data[idx]['ans']]
             ans2idx = np.random.choice(ans2idx)
             sample['answer'] = ans2idx
 
-        # if self.transform:
-        #     sample['image'] = self.transform(sample['image'])
+        if self.transform:
+            sample['image'] = self.transform(sample['image'])
 
         return sample
 
@@ -46,8 +47,10 @@ class VQADataset(Dataset):
 def data_loader(input_dir, batch_size, max_qst_len, num_worker):
 
     transform = transforms.Compose([
+        transforms.Resize((448, 448)),
         transforms.ToTensor(),  # convert to (C,H,W) and [0,1]
         transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))  # mean=0; std=1
+
     ])
 
     vqa_dataset = {
