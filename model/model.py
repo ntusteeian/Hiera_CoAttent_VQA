@@ -4,24 +4,28 @@ import torchvision.models as model
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from prepro.build_dataset import VQADataset
 
-class CoAttent(nn.Module):
+class CoAttentModel(nn.Module):
 
     def __init__(self, num_vocab, embbed_size=512):
 
         super(CoAttent, self).__init__()
 
-        resnet152 = model.resnet152()
-        self.resnet152 = nn.Sequential(*list(resnet152.children())[:-1]) # remove the last layer
+        resnet18 = model.resnet18(pretrained=True)
+        self.resnet18 = nn.Sequential(*list(resnet18.children())[:-2]) # remove the last layer
 
+        # Hierarchy question encoding
         self.embedding = nn.Embedding(num_vocab, embbed_size)
         self.unigram = nn.Conv1d(embbed_size, embbed_size, kernel_size=1, stride=1, padding=0)
         self.bigram = nn.Conv1d(embbed_size, embbed_size, kernel_size=2, stride=1, padding=1)
         self.trigram = nn.Conv1d(embbed_size, embbed_size, kernel_size=3, stride=1, padding=1)
-        self.dropout = nn.Dropout(0.5)
         self.maxpool = nn.MaxPool2d((3, 1))
-        self.tanh = nn.Tanh()
+        self.lstm = nn.LSTM(input_size=embbed_size, hidden_size=embbed_size, batch_first=True, dropout=0.5)
 
-        self.lstm = nn.LSTM(input_size=embbed_size, hidden_size=embbed_size, batch_first=True)
+        # attention
+        self.W_b = nn.Linear(in_features= embbed_size, out_features=embbed_size)
+        # activation
+        self.dropout = nn.Dropout(0.5)
+        self.tanh = nn.Tanh()
 
     def forward(self, img, qst, qst_length):
 
@@ -41,28 +45,36 @@ class CoAttent(nn.Module):
         qst_packed, _ = self.lstm(phrase_packed)
         qst_embedding, _ = pad_packed_sequence(qst_packed, batch_first=True)  # [batch_size, max_qst_len=9, embbed_dim=512]
 
+        with torch.no_grad():
+            img_feat = self.resnet18(img)
+        img_feat = img_feat.view(img_feat.size(0), img_feat.size(1), -1)
+
         return phrase
 
+    def co_attention(self, img_feat, qst_feat):
+
+        img_w = self.W_b(img_feat.permute(0, 2, 1))                # [batch_size, 512, 196]
+        C = torch.bmm(qst_feat, img_w)
+
 from torch.utils.data import DataLoader
+from torchvision import transforms
 
 
 
 if __name__ == '__main__':
 
     torch.manual_seed(0)
-    vqa = VQADataset('../data', 'train.npy')
+
+    transform = transforms.Compose([
+        transforms.Resize((448, 448)),
+        transforms.ToTensor(),  # convert to (C,H,W) and [0,1]
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))  # mean=0; std=1
+
+    ])
+    vqa = VQADataset('../data', 'train.npy', transform=transform)
     num_vocab = vqa.qst_vocab.vocab_size
     train_loader = DataLoader(dataset=vqa,batch_size=5,shuffle=True,num_workers=8)
-
     test_model = CoAttent(num_vocab=num_vocab)
-    for idx, sample in enumerate(train_loader):
-        output = test_model(sample['question'], sample['length'])
 
-    # test = torch.randn(2, 3, 224, 224)
-    # resnet152 = model.resnet152()
-    # new = nn.Sequential(*list(resnet152.children())[:-1])
-    # output = new(test)
-    # print(resnet152)
-    # print('$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$')
-    # print(new)
-    # print(output.shape)
+    for idx, sample in enumerate(train_loader):
+        output = test_model(sample['image'], sample['question'], sample['length'])
